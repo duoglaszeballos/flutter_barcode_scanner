@@ -20,12 +20,16 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
+import android.content.ClipData;
+import android.content.ClipDescription;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.hardware.Camera;
+import android.media.Image;
 import android.os.Build;
 import android.os.Bundle;
 
@@ -33,6 +37,7 @@ import androidx.annotation.NonNull;
 
 import com.google.android.material.snackbar.Snackbar;
 
+import androidx.appcompat.app.ActionBar;
 import androidx.core.app.ActivityCompat;
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -42,6 +47,7 @@ import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.Toast;
 
@@ -106,48 +112,75 @@ public final class BarcodeCaptureActivity extends AppCompatActivity implements B
     @Override
     public void onCreate(Bundle icicle) {
         super.onCreate(icicle);
+
         try {
             setContentView(R.layout.barcode_capture);
 
-            String buttonText = "";
+            String cancelButtonText = "";
+            String pasteButtonText = "";
             try {
-                    buttonText = (String) getIntent().getStringExtra("cancelButtonText");
-        } catch (Exception e) {
-            buttonText = "Cancel";
-            Log.e("BCActivity:onCreate()", "onCreate: " + e.getLocalizedMessage());
-        }
-
-        Button btnBarcodeCaptureCancel = findViewById(R.id.btnBarcodeCaptureCancel);
-        btnBarcodeCaptureCancel.setText(buttonText);
-        btnBarcodeCaptureCancel.setOnClickListener(this);
-
-        imgViewBarcodeCaptureUseFlash = findViewById(R.id.imgViewBarcodeCaptureUseFlash);
-        imgViewBarcodeCaptureUseFlash.setOnClickListener(this);
-        imgViewBarcodeCaptureUseFlash.setVisibility(FlutterBarcodeScannerPlugin.isShowFlashIcon ? View.VISIBLE : View.GONE);
-
-        imgViewSwitchCamera = findViewById(R.id.imgViewSwitchCamera);
-        imgViewSwitchCamera.setOnClickListener(this);
-
-        mPreview = findViewById(R.id.preview);
-        mGraphicOverlay = findViewById(R.id.graphicOverlay);
-
-        // read parameters from the intent used to launch the activity.
-        boolean autoFocus = true;
-        boolean useFlash = false;
-
-        // Check for the camera permission before accessing the camera.  If the
-        // permission is not granted yet, request permission.
-        int rc = ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA);
-            if (rc == PackageManager.PERMISSION_GRANTED) {
-                createCameraSource(autoFocus, useFlash, CameraSource.CAMERA_FACING_BACK);
-            } else {
-                requestCameraPermission();
+                cancelButtonText = (String) getIntent().getStringExtra("cancelButtonText");
+                pasteButtonText = (String) getIntent().getStringExtra("pasteButtonText");
+            } catch (Exception e) {
+                cancelButtonText = "Cancel";
+                pasteButtonText = "Paste";
+                Log.e("BCActivity:onCreate()", "onCreate: " + e.getLocalizedMessage());
             }
 
-            gestureDetector = new GestureDetector(this, new CaptureGestureListener());
-            scaleGestureDetector = new ScaleGestureDetector(this, new ScaleListener());
+            ActionBar actionBar = getSupportActionBar();
+            actionBar.setDisplayShowCustomEnabled(true);
+            actionBar.setCustomView(R.layout.custom_appbar_layout);
 
-        } catch (Exception e) {
+            View view = actionBar.getCustomView();
+            ImageButton imageButton = (ImageButton) view.findViewById(R.id.action_bar_back);
+            imageButton.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    finish();
+                }
+            });
+
+            Button clipboardButton = findViewById(R.id.btnPasteBarcode);
+            clipboardButton.setOnClickListener(this);
+            clipboardButton.setVisibility(View.GONE);
+
+            ClipboardManager clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            String pasteData = null;
+
+            if((clipboardManager.hasPrimaryClip()) && (clipboardManager.getPrimaryClipDescription().hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN))){
+                ClipData.Item item = clipboardManager.getPrimaryClip().getItemAt(0);
+                pasteData = item.getText().toString();
+                if(pasteData.startsWith("8") && pasteData.length() >= 40){
+                    clipboardButton.setVisibility(View.VISIBLE);
+                    clipboardButton.setText(pasteButtonText + " " + pasteData);
+                }
+            }
+
+            Button btnBarcodeCaptureCancel = findViewById(R.id.btnBarcodeCaptureCancel);
+            btnBarcodeCaptureCancel.setText(cancelButtonText);
+            btnBarcodeCaptureCancel.setOnClickListener(this);
+
+
+            mPreview = findViewById(R.id.preview);
+            mGraphicOverlay = findViewById(R.id.graphicOverlay);
+
+            // read parameters from the intent used to launch the activity.
+            boolean autoFocus = true;
+            boolean useFlash = false;
+
+            // Check for the camera permission before accessing the camera.  If the
+            // permission is not granted yet, request permission.
+            int rc = ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA);
+                if (rc == PackageManager.PERMISSION_GRANTED) {
+                    createCameraSource(autoFocus, useFlash, CameraSource.CAMERA_FACING_BACK);
+                } else {
+                    requestCameraPermission();
+                }
+
+                gestureDetector = new GestureDetector(this, new CaptureGestureListener());
+                scaleGestureDetector = new ScaleGestureDetector(this, new ScaleListener());
+
+            } catch (Exception e) {
         }
     }
 
@@ -395,34 +428,31 @@ public final class BarcodeCaptureActivity extends AppCompatActivity implements B
     @Override
     public void onClick(View v) {
         int i = v.getId();
-        if (i == R.id.imgViewBarcodeCaptureUseFlash &&
-                getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_FLASH)) {
-            try {
-                if (flashStatus == USE_FLASH.OFF.ordinal()) {
-                    flashStatus = USE_FLASH.ON.ordinal();
-                    imgViewBarcodeCaptureUseFlash.setImageResource(R.drawable.ic_barcode_flash_on);
-                    turnOnOffFlashLight(true);
-                } else {
-                    flashStatus = USE_FLASH.OFF.ordinal();
-                    imgViewBarcodeCaptureUseFlash.setImageResource(R.drawable.ic_barcode_flash_off);
-                    turnOnOffFlashLight(false);
-                }
-            } catch (Exception e) {
-                Toast.makeText(this, "Unable to turn on flash", Toast.LENGTH_SHORT).show();
-                Log.e("BarcodeCaptureActivity", "FlashOnFailure: " + e.getLocalizedMessage());
-            }
-        } else if (i == R.id.btnBarcodeCaptureCancel) {
+        if (i == R.id.btnBarcodeCaptureCancel) {
             Barcode barcode = new Barcode();
             barcode.rawValue = "-1";
             barcode.displayValue = "-1";
             FlutterBarcodeScannerPlugin.onBarcodeScanReceiver(barcode);
             finish();
-        } else if (i == R.id.imgViewSwitchCamera) {
-            int currentFacing = mCameraSource.getCameraFacing();
-            boolean autoFocus = mCameraSource.getFocusMode() != null;
-            boolean useFlash = flashStatus == USE_FLASH.ON.ordinal();
-            createCameraSource(autoFocus, useFlash, getInverseCameraFacing(currentFacing));
-            startCameraSource();
+        }else if (i == R.id.btnPasteBarcode){
+            ClipboardManager clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            String pasteData = null;
+
+            if((clipboardManager.hasPrimaryClip()) && (clipboardManager.getPrimaryClipDescription().hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN))){
+                ClipData.Item item = clipboardManager.getPrimaryClip().getItemAt(0);
+                pasteData = item.getText().toString().concat("_P");
+
+                Barcode barcode = new Barcode();
+                barcode.rawValue = pasteData;
+                barcode.displayValue = pasteData;
+                Intent data = new Intent();
+                data.putExtra(BarcodeObject, barcode);
+                setResult(CommonStatusCodes.SUCCESS, data);
+                FlutterBarcodeScannerPlugin.onPasteBarcode(barcode);
+                ClipData nClipData = ClipData.newPlainText("","");
+                clipboardManager.setPrimaryClip(nClipData);
+                finish();
+            }
         }
     }
 

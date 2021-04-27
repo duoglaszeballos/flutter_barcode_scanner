@@ -115,16 +115,16 @@ public class FlutterBarcodeScannerPlugin implements MethodCallHandler, ActivityR
 
                 isContinuousScan = (boolean) arguments.get("isContinuousScan");
 
-                startBarcodeScannerActivityView((String) arguments.get("cancelButtonText"), isContinuousScan);
+                startBarcodeScannerActivityView((String) arguments.get("cancelButtonText"), (String) arguments.get("pasteButtonText"), isContinuousScan);
             }
         } catch (Exception e) {
             Log.e(TAG, "onMethodCall: " + e.getLocalizedMessage());
         }
     }
 
-    private void startBarcodeScannerActivityView(String buttonText, boolean isContinuousScan) {
+    private void startBarcodeScannerActivityView(String cancelButtonText, String pasteButtonText, boolean isContinuousScan) {
         try {
-            Intent intent = new Intent(activity, BarcodeCaptureActivity.class).putExtra("cancelButtonText", buttonText);
+            Intent intent = new Intent(activity, BarcodeCaptureActivity.class).putExtra("cancelButtonText", cancelButtonText).putExtra("pasteButtonText", pasteButtonText);
             if (isContinuousScan) {
                 activity.startActivity(intent);
             } else {
@@ -206,6 +206,17 @@ public class FlutterBarcodeScannerPlugin implements MethodCallHandler, ActivityR
             Log.e(TAG, "onBarcodeScanReceiver: " + e.getLocalizedMessage());
         }
     }
+
+    public static void onPasteBarcode(final Barcode barcode){
+        try{
+            if(barcode != null && !barcode.displayValue.isEmpty()){
+                barcodeStream.success(barcode.rawValue);
+            }
+        }catch (Exception e) {
+            Log.e(TAG, "onPasteBarcode: " + e.getLocalizedMessage());
+        }
+    }
+
 
     @Override
     public void onAttachedToEngine(FlutterPluginBinding binding) {
